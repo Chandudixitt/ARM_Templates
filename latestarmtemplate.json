@@ -1,0 +1,680 @@
+    {
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+      "location": {
+        "defaultValue": "East US 2",
+        "type": "string"
+      },
+      "imagesnapshot": {
+        "type": "string",
+        "defaultValue": "/subscriptions/1f0d02b4-a809-4b3b-b868-b4b6f6713cf4/resourceGroups/arm-demo-rg/providers/Microsoft.Compute/galleries/armdemogallery/images/arm-vm-image1/versions/1.1.1"
+      },
+      "play_VM_count": {
+        "type": "int",
+        "defaultValue": 1
+      },
+      "con_VM_count": {
+        "type": "int",
+        "defaultValue": 1
+      },
+    "VM_zones": {
+      "type": "array",
+      "defaultValue": ["1", "2", "3"]
+    },
+      "lb_probe_details": {
+        "type": "object",
+        "defaultValue": {
+          "hostname_prefix": "arm",
+          "create_lb_forvm": "yes",
+          "probe_details": {
+            "protocol": "Https",
+            "port": 443,
+            "request_path": "/opt",
+            "interval_in_seconds": 5,
+            "number_of_probes": 2
+          },
+          "tcp_ports_for_external_clients": [80, 443, 8090, 8080, 8443]
+        }
+      },
+      "create_custom_script_execution": {
+        "defaultValue": "yes",
+        "type": "string"
+      }
+      //"subnetId": {
+      //"defaultValue": "/subscriptions/1f0d02b4-a809-4b3b-b868-b4b6f6713cf4/resourceGroups/arm-demo-rg/providers/Microsoft.Network/virtualNetworks/arm-demo-vnet/subnets/default"
+      //},
+    },
+    "variables": {
+      "vmDetails": [
+        {
+          "namePrefix": "bin",
+          "size": "Standard_D2s_v3",
+          "count": 0,
+          "os_disk_size_gb": 32,
+          "os_disk_type": "Standard_LRS",
+          "createPublipIP": "yes",
+          //"adminUsername"         : "ubuntu",
+          "managed_data_disk": {
+            "create_data_disk": "yes",
+            "datadisk_type": "Standard_LRS",
+            "datadisk_size_gb": 32
+          }
+        },
+
+        {
+          "namePrefix": "bash",
+          "size": "Standard_D2s_v3",
+          "count": 0,
+          "os_disk_size_gb": 32,
+          "os_disk_type": "Standard_LRS",
+          "createPublipIP": "yes",
+          //"adminUsername"         : "azureuser",
+          "managed_data_disk": {
+            "create_data_disk": "yes",
+            "datadisk_type": "Standard_LRS",
+            "datadisk_size_gb": 32
+          }
+        }
+      ],
+      "linux_details": [
+        {
+          "namePrefix": "linux",
+          "size": "Standard_D2s_v3",
+          "count": 1,
+          "os_disk_size_gb": 32,
+          "os_disk_type": "Standard_LRS",
+          "createPublipIP": "yes",
+          "managed_data_disk": {"create_data_disk": "yes", "datadisk_type": "Standard_LRS","datadisk_size_gb": 32}
+        }
+      ],
+      "script_vmDetails": [
+        {
+          "namePrefix": "con",
+          "size": "Standard_D2s_v3",
+          "vm_count": 1,
+          "os_disk_size_gb": 32,
+          "os_disk_type": "Standard_LRS",
+          "createPublipIP": "yes",
+          "username": "ubuntu",
+          "password": "Evertz@123#",
+          "managed_data_disk": {"create_data_disk": "yes", "datadisk_type": "Standard_LRS","datadisk_size_gb": 32},
+          "source_image": {
+            "publisher": "Canonical",
+            "offer": "0001-com-ubuntu-server-jammy",
+            "sku": "22_04-LTS",
+            "version": "latest"
+          }
+        },
+        {
+          "namePrefix": "play",
+          "size": "Standard_D2s_v3",
+          "vm_count": 0,
+          "os_disk_size_gb": 32,
+          "os_disk_type": "Standard_LRS",
+          "createPublipIP": "yes",
+          "username": "ubuntu",
+          "password": "Evertz@123#",
+          "managed_data_disk": {"create_data_disk": "yes", "datadisk_type": "Standard_LRS","datadisk_size_gb": 32},
+          "source_image": {
+            "publisher": "Canonical",
+            "offer": "0001-com-ubuntu-server-jammy",
+            "sku": "22_04-LTS",
+            "version": "latest"
+          }
+        }
+      ],
+      "conn_vm_count": "[variables('script_vmDetails')[0].vm_count]",
+      "playy_vm_count": "[variables('script_vmDetails')[1].vm_count]",  
+      "conn_vm_name": "[variables('script_vmDetails')[0].namePrefix]",
+      "play_vm_name": "[variables('script_vmDetails')[1].namePrefix]",
+      "prefix": "demo",
+      //"conn_vm_count": {"type": "int", "defaultValue": "[variables('script_vmDetails')[0].vm_count]"},
+      "democustomescript_sh": "IyEvYmluL2Jhc2gKc3VkbyBta2RpciBjb25fZGVtb19kaXJlY3RvcnkKc3VkbyB0b3VjaCBjb25fZGVtb2ZpbGUudHh0CnN1ZG8gYXB0LWdldCB1cGRhdGUgLXkKc3VkbyBhcHQtZ2V0IGluc3RhbGwgbmdpbnggLXkKc3VkbyBzeXN0ZW1jdGwgc3RhcnQgbmdpbngKZWNobyAiRW50ZXIgYSBudW1iZXI6ICIKcmVhZCBudW1iZXIKaWYgWyAkbnVtYmVyIC1ndCAwIF07IHRoZW4KICAgICAgICBlY2hvICJUaGUgbnVtYmVyIGlzIHBvc2l0aXZlLiIKZWxpZiBbICRudW1iZXIgLWx0IDAgXTsgdGhlbgogICAgICAgIGVjaG8gIlRoZSBudW1iZXIgaXMgbmVnYXRpdmUuIgplbHNlCiAgICAgICAgZWNobyAiVGhlIG51bWJlciBpcyB6ZXJvLiIKZmkKCmVjaG8gInNjcmlwdCBleGVjdXRpb24gY29tcGxldGVkIg==",
+      "startup_sh": "IyEvYmluL2Jhc2gKc3VkbyBta2RpciBteV9kaXJlY3RvcnkKc3VkbyB0b3VjaCBleGFtcGxlLnR4dAplY2hvICJzY3JpcHQgZXhlY3V0aW9uIGNvbXBsZXRlZCI=",
+      "myshellscript_sh": "IyEvYmluL2Jhc2gKc3VkbyBta2RpciBwbGF5X2RlbW9fZGlyZWN0b3J5CnN1ZG8gdG91Y2ggcGxheV9kZW1vZmlsZS50eHQKc3VkbyBhcHQtZ2V0IHVwZGF0ZSAteQpzdWRvIGFwdC1nZXQgaW5zdGFsbCBhcGFjaGUyIC15CnN1ZG8gc3lzdGVtY3RsIHN0YXJ0IGFwYWNoZTIKZWNobyAiRW50ZXIgYSBudW1iZXI6ICIKcmVhZCBudW1iZXIKaWYgWyAkbnVtYmVyIC1ndCAwIF07IHRoZW4KICAgICAgICBlY2hvICJUaGUgbnVtYmVyIGlzIHBvc2l0aXZlLiIKZWxpZiBbICRudW1iZXIgLWx0IDAgXTsgdGhlbgogICAgICAgIGVjaG8gIlRoZSBudW1iZXIgaXMgbmVnYXRpdmUuIgplbHNlCiAgICAgICAgZWNobyAiVGhlIG51bWJlciBpcyB6ZXJvLiIKZmkKCmVjaG8gInNjcmlwdCBleGVjdXRpb24gY29tcGxldGVkIg=="
+      //"custom_script_execution": {"create_custome_script_execution": "yes"}
+      //"sshKeyToUse": "[if(equals(parameters('sshPublicKey'), 'Generate new key pair'), 'generate', if(equals(parameters('sshPublicKey'), 'Use existing public key'), parameters('sshPublicKey'), 'Use existing key stored in Azure'))]"
+    },
+
+    "resources": [
+      {
+        "type": "Microsoft.Resources/deployments",
+        "apiVersion": "2021-04-01",
+        "name": "[concat('VMDeployment-',variables('vmDetails')[copyIndex('vmLoop')].namePrefix)]",
+        "copy": {
+          "name": "vmLoop",
+          "count": "[length(variables('vmDetails'))]"
+        },
+        "properties": {
+          "expressionEvaluationOptions": {
+            "scope": "inner"
+          },
+          "mode": "Incremental",
+          "parameters": {
+            "vmDetails": {
+              "value": "[variables('vmDetails')]"
+            },
+            "linux_details": {
+              "value": "[variables('linux_details')]"
+            },
+            "prefix": {"value": "[variables('prefix')]"},
+            "lb_probe_details": {
+              "value": "[parameters('lb_probe_details')]"
+            },
+            "location": {
+              "value": "[parameters('location')]"
+            },
+            "imagesnapshot": {
+              "value": "[parameters('imagesnapshot')]"
+            },
+            "node_index": { "value": "[copyIndex('vmLoop')]" },
+            "VM_zones": {"value": "[parameters('VM_zones')]"},
+            //"storage_account_name": {"value": "[variables('storage_account_name')]"},
+            //"storage_account_key": {"value": "[variables('storage_account_key')]"},
+            "create_custom_script_execution": {"value": "[parameters('create_custom_script_execution')]"},
+            "democustomescript_sh": {"value": "[variables('democustomescript_sh')]"},
+            "startup_sh": {"value": "[variables('startup_sh')]"},
+            "myshellscript_sh": {"value": "[variables('myshellscript_sh')]"},
+            "play_VM_count": {"value": "[parameters('play_VM_count')]"},
+            "con_VM_count": {"value": "[parameters('con_VM_count')]"}
+          },
+          "template": {
+            "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+            "contentVersion": "1.0.0.0",
+            "parameters": {
+              "vmDetails": {
+                "type": "array"
+              },
+              "linux_details": {
+                "type": "array"
+              },
+              "location": {
+                "type": "string"
+              },
+              "VM_zones": {
+                "type": "array"
+              },
+              "imagesnapshot": {
+                "type": "string"
+              },
+              "lb_probe_details": {
+                "type": "object"
+              },
+              "node_index": {
+                "type": "int"
+              },
+              "prefix": {
+                "type": "string"
+              },
+              //"storage_account_name": {"type": "string"},
+              //"storage_account_key": {"type": "string"},
+              "create_custom_script_execution": {"type": "string"},
+              "democustomescript_sh": {"type": "string"},
+              "startup_sh": {"type": "string"},
+              "myshellscript_sh": {"type": "string"},
+              "play_VM_count": {"type": "int"},
+              "con_VM_count": {"type": "int"}
+            },
+            "variables": {
+              "vmDetails": "[parameters('vmDetails')]",
+              //"createPublipIP": "[parameters('createPublipIP')]",
+              "prefix": "[parameters('prefix')]",
+              "ipsuffix": "-pip",
+              "nicsuffix": "-nic",
+              "vmsuffix": "-vm-",
+              //"storage_account_name": "[parameters('storage_account_name')]",
+              //"storage_account_key": "[parameters('storage_account_key')]",
+              "create_custom_script_execution": "[parameters('create_custom_script_execution')]",
+              "democustomescript_sh": "[parameters('democustomescript_sh')]",
+              "startup_sh": "[parameters('startup_sh')]",
+              "myshellscript_sh": "[parameters('myshellscript_sh')]"
+            },
+            "resources": [
+              {
+                "type": "Microsoft.Network/publicIPAddresses",
+                "apiVersion": "2021-02-01",
+                "name": "[concat(variables('vmDetails')[parameters('node_index')].namePrefix, copyIndex('ipsLoop'), variables('ipsuffix'))]",
+                "location": "[parameters('location')]",
+                "condition": "[and(equals(toLower(variables('vmDetails')[parameters('node_index')].createPublipIP), 'yes'), greater(variables('vmDetails')[parameters('node_index')].count, 0))]",
+                "sku": {
+                  "name": "Standard",
+                  "tier": "Regional"
+                },
+                "copy": { 
+                  "name": "ipsLoop",
+                  "count": "[variables('vmDetails')[parameters('node_index')].count]"
+                },
+                "zones": ["[parameters('VM_zones')[mod(copyIndex(), length(parameters('VM_zones')))]]"],
+                "properties": {
+                  "publicIPAllocationMethod": "Static"
+                }
+              },
+              {
+                "type": "Microsoft.Network/publicIPAddresses",
+                "apiVersion": "2023-11-01",
+                "name": "[concat(variables('prefix'), parameters('lb_probe_details').hostname_prefix, '-lb-pub-ip')]",
+                "location": "[parameters('location')]",
+                "zones": ["[add(mod(0, length(parameters('linux_details'))),1)]"],
+                "sku": {
+                  "name": "Standard",
+                  "tier": "Regional"
+                },
+                "properties": {
+                  "publicIPAddressVersion": "IPv4",
+                  "publicIPAllocationMethod": "Static",
+                  "idleTimeoutInMinutes": 5,
+                  "ddosSettings": {
+                    "protectionMode": "VirtualNetworkInherited"
+                  }
+                }
+              },
+              {
+                "type": "Microsoft.Network/networkInterfaces",
+                "apiVersion": "2021-02-01",
+                "name": "[concat(variables('vmDetails')[parameters('node_index')].namePrefix, copyIndex('nicsLoop'), variables('nicsuffix'))]",
+                "id": "[resourceId('Microsoft.Network/networkInterfaces', concat(variables('vmDetails')[parameters('node_index')].namePrefix, copyIndex('nicsLoop'), variables('nicsuffix')))]",
+                "location": "[parameters('location')]",
+                "copy": {
+                  "name": "nicsLoop",
+                  "count": "[variables('vmDetails')[parameters('node_index')].count]"
+                },
+                "properties": {
+                  "ipConfigurations": [
+                    {
+                      "name": "ipconfig1",
+                      "properties": {
+                        "privateIPAllocationMethod": "Dynamic",
+                        "publicIPAddress": {
+                          "id": "[resourceId('Microsoft.Network/publicIPAddresses', concat(variables('vmDetails')[parameters('node_index')].namePrefix, copyIndex(), variables('ipsuffix')))]"
+                        },
+                        "subnet": {
+                          "id": "[concat('/subscriptions/', subscription().subscriptionId, '/resourceGroups/', resourceGroup().name, '/providers/Microsoft.Network/virtualNetworks/arm-demo-vnet/subnets/default')]"
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "type": "Microsoft.Network/loadBalancers",
+                "apiVersion": "2023-11-01",
+                "name": "[concat(variables('prefix'), parameters('lb_probe_details').hostname_prefix, '-load-balancer')]",
+                "location": "[parameters('location')]",
+                "condition": "[and(equals(toLower(parameters('lb_probe_details').create_lb_forvm), 'yes'), greater(variables('vmDetails')[parameters('node_index')].count, 0))]",
+                "sku": {
+                  "name": "Standard",
+                  "tier": "Regional"
+                },
+                "properties": {
+                  "backendAddressPools": [
+                    {
+                      "name": "[concat(parameters('lb_probe_details').hostname_prefix, '-backend-address-pool')]",
+                      "id": "[resourceId('Microsoft.Network/loadBalancers/backendAddressPools',concat(variables('prefix'),parameters('lb_probe_details').hostname_prefix,'-load-balancer'),concat(parameters('lb_probe_details').hostname_prefix,'-backend-address-pool'))]"
+                    }
+                  ],
+                  "frontendIPConfigurations": [
+                    {
+                      "name": "[concat(parameters('lb_probe_details').hostname_prefix, '-lb-frontend-ip')]",
+                      "id": "[concat(resourceId('Microsoft.Network/loadBalancers', concat(variables('prefix'), parameters('lb_probe_details').hostname_prefix, '-load-balancer')), '/frontendIPConfigurations/',concat(parameters('lb_probe_details').hostname_prefix, '-lb-frontend-ip'))]",
+                      "properties": {
+                        "privateIPAllocationMethod": "Dynamic",
+                        "publicIPAddress": {
+                          "id": "[resourceId('Microsoft.Network/publicIPAddresses', concat(variables('prefix'), parameters('lb_probe_details').hostname_prefix, '-lb-pub-ip'))]"
+                        }
+                      }
+                    }
+                  ],
+                  "probes": [
+                    {
+                      "name": "[concat(variables('prefix'),parameters('lb_probe_details').hostname_prefix, '-probe')]",
+                      "id": "[concat(resourceId('Microsoft.Network/loadBalancers', concat(variables('prefix'), parameters('lb_probe_details').hostname_prefix, '-load-balancer')), '/probes/',concat(variables('prefix'), parameters('lb_probe_details').hostname_prefix, '-probe'))]",
+                      "properties": {
+                        "protocol": "[parameters('lb_probe_details').probe_details.protocol]",
+                        "port": "[parameters('lb_probe_details').probe_details.port]",
+                        "numberOfProbes": "[parameters('lb_probe_details').probe_details.number_of_probes]",
+                        "requestPath": "[parameters('lb_probe_details').probe_details.request_path]",
+                        "intervalInSeconds": "[parameters('lb_probe_details').probe_details.interval_in_seconds]",
+                        "probeThreshold": 1
+                      }
+                    }
+                  ],
+                  "copy": [{
+                    "name": "loadBalancingRules",
+                    "count": "[length(parameters('lb_probe_details').tcp_ports_for_external_clients)]",
+                    "input": {
+                      "name": "[concat(parameters('lb_probe_details').hostname_prefix,'-lb-rule',parameters('lb_probe_details').tcp_ports_for_external_clients[copyIndex('loadBalancingRules',0)])]",
+                      "id": "[concat(resourceId('Microsoft.Network/loadBalancers', concat(variables('prefix'), parameters('lb_probe_details').hostname_prefix,'-load-balancer')), '/loadBalancingRules/', concat(parameters('lb_probe_details').hostname_prefix, '-lb-rule', parameters('lb_probe_details').tcp_ports_for_external_clients[copyIndex('loadBalancingRules', 0)]))]",
+                      "properties": {
+                        "frontendIPConfiguration": {
+                          "id": "[concat(resourceId('Microsoft.Network/loadBalancers', concat(variables('prefix'), parameters('lb_probe_details').hostname_prefix, '-load-balancer')), '/frontendIPConfigurations/',concat(parameters('lb_probe_details').hostname_prefix, '-lb-frontend-ip'))]"
+                        },
+                        "frontendPort": "[parameters('lb_probe_details').tcp_ports_for_external_clients[copyIndex('loadBalancingRules', 0)]]",
+                        "backendPort": "[parameters('lb_probe_details').tcp_ports_for_external_clients[copyIndex('loadBalancingRules', 0)]]",
+                        "enablefloatingIP": false,
+                        "idleTimeoutInMinutes": 5,
+                        "protocol": "Tcp",
+                        "enableTcpReset": true,
+                        "loadDistribution": "Default",
+                        "backendAddressPool": {
+                          "id": "[resourceId('Microsoft.Network/loadBalancers/backendAddressPools', concat(variables('prefix'),parameters('lb_probe_details').hostname_prefix, '-load-balancer'),concat(parameters('lb_probe_details').hostname_prefix, '-backend-address-pool'))]"
+                        },
+                        "probe": {
+                          "id": "[concat(resourceId('Microsoft.Network/loadBalancers', concat(variables('prefix'), parameters('lb_probe_details').hostname_prefix, '-load-balancer')), '/probes/',concat(variables('prefix'), parameters('lb_probe_details').hostname_prefix, '-probe'))]"
+                        }
+                      }
+                    }
+                  }]
+                }
+              },
+              {
+                "type": "Microsoft.Network/loadBalancers/backendAddressPools",
+                "apiVersion": "2023-05-01",
+                "condition": "[and(equals(toLower(parameters('lb_probe_details').create_lb_forvm),'yes'),greater(variables('vmDetails')[parameters('node_index')].count,0))]",
+                "name": "[concat(variables('prefix'), parameters('lb_probe_details').hostname_prefix, '-load-balancer/', parameters('lb_probe_details').hostname_prefix, '-backend-address-pool')]",
+                  "id": "[resourceId('Microsoft.Network/loadBalancers/backendAddressPools', concat(variables('prefix'),parameters('lb_probe_details').hostname_prefix, '-load-balancer'),concat(parameters('lb_probe_details').hostname_prefix, '-backend-address-pool'))]",
+                  "dependsOn": [
+                  "[resourceId('Microsoft.Network/loadBalancers', concat(variables('prefix'),parameters('lb_probe_details').hostname_prefix, '-load-balancer'))]"
+                ],
+                "properties": {
+                  "copy": [{
+                    "name": "loadBalancerBackendAddresses",
+                    "count": "[variables('vmDetails')[parameters('node_index')].count]",
+                    "input": {
+                      "name": "[concat(variables('prefix'),variables('vmDetails')[parameters('node_index')].namePrefix,copyIndex('loadBalancerBackendAddresses', 0), '-backend-address-pool-address')]",
+                      "properties": {
+                      "ipAddress": "[reference(resourceId('Microsoft.Network/networkInterfaces', concat(variables('vmDetails')[parameters('node_index')].namePrefix,copyIndex('loadBalancerBackendAddresses'),variables('nicsuffix'))), '2022-01-01').ipConfigurations[0].properties.privateIPAddress]",
+                        "virtualNetwork": {
+                          "id": "[concat('/subscriptions/', subscription().subscriptionId, '/resourceGroups/', resourceGroup().name, '/providers/Microsoft.Network/virtualNetworks/arm-demo-vnet')]"
+                        }
+                      }
+                    }
+                  }]
+                }
+              },
+              {
+                "type": "Microsoft.Compute/virtualMachines",
+                "apiVersion": "2021-03-01",
+                "name": "[concat(variables('vmDetails')[parameters('node_index')].namePrefix, variables('vmsuffix'), copyIndex())]",
+                "location": "[parameters('location')]",
+                "dependsOn": ["nicsLoop"],
+                "copy": {
+                  "name": "vmsLoop",
+                  "count": "[variables('vmDetails')[parameters('node_index')].count]"
+                },
+                "properties": {
+                  "hardwareProfile": {
+                    "vmSize": "[variables('vmDetails')[parameters('node_index')].size]"
+                  },
+                  "networkProfile": {
+                    "networkInterfaces": [
+                      {
+                        "id": "[resourceId('Microsoft.Network/networkInterfaces', concat(variables('vmDetails')[parameters('node_index')].namePrefix, copyIndex(), variables('nicsuffix')))]"
+                      }
+                    ]
+                  },
+                  "securityProfile": {
+                    "securityType": "TrustedLaunch",
+                    "uefiSettings": {
+                      "secureBootEnabled": true,
+                      "vTpmEnabled": true
+                    }
+                  },
+                  "storageProfile": {
+                    "imageReference": {
+                      "id": "[parameters('imagesnapshot')]"
+                    },
+                    "dataDisks": "[if(and(equals(toLower(variables('vmDetails')[parameters('node_index')].managed_data_disk.create_data_disk), 'yes'), greater(variables('vmDetails')[parameters('node_index')].count, 0)), json(concat('[{\"lun\":5,\"name\":\"', variables('vmDetails')[parameters('node_index')].namePrefix, copyIndex('vmsLoop', 0), '-Datadisk', '\",\"createOption\":\"Empty\",\"caching\":\"ReadWrite\",\"writeacceleratorEnabled\":false,\"managedDisk\":{\"storageAccountType\":\"', variables('vmDetails')[parameters('node_index')].managed_data_disk.datadisk_type, '\"},\"deleteOption\":\"Detach\",\"diskSizeGB\":', variables('vmDetails')[parameters('node_index')].managed_data_disk.datadisk_size_gb, ',\"toBeDetached\":false}]')), null())]"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      {
+        "type": "Microsoft.Resources/deployments",
+        "apiVersion": "2023-07-01",
+        "copy": {
+          "name": "scriptvmsloop",
+          "count": "[length(variables('script_vmDetails'))]"
+        },
+        "name": "[concat('CustomScriptDeployment-',variables('script_vmDetails')[copyIndex('scriptvmsloop')].namePrefix)]",
+        "properties": {
+          "expressionEvaluationOptions": {
+            "scope": "Inner"
+          },
+          "mode": "Incremental",
+          "parameters": {
+            "prefix": {"value": "[variables('prefix')]"},
+            "location": {"value": "[parameters('location')]"},
+            "script_vmDetails": {"value": "[variables('script_vmDetails')]"},
+            "scriptvmCount": {"value": "[copyIndex('scriptvmsloop')]"},
+            "create_custom_script_execution": {"value": "[parameters('create_custom_script_execution')]"},
+            "democustomescript_sh": {"value": "[variables('democustomescript_sh')]"},
+            "play_VM_count": {"value": "[parameters('play_VM_count')]"},
+            "myshellscript_sh": {"value": "[variables('myshellscript_sh')]"},
+            "startup_sh": {"value": "[variables('startup_sh')]"},
+            "conn_vm_count": {"value": "[variables('conn_vm_count')]"},
+            "playy_vm_count": {"value": "[variables('playy_vm_count')]"},
+            "conn_vm_name": {"value": "[variables('conn_vm_name')]"},
+            "play_vm_name": {"value": "[variables('play_vm_name')]"},
+            "con_VM_count": {"value": "[parameters('con_VM_count')]"}
+          },
+          "template": {
+            "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+            "contentVersion": "1.0.0.0",
+            "parameters": {
+              "script_vmDetails": {"type": "array"},"location": {"type": "string"},"prefix": {"type": "string"},"scriptvmCount": {"type": "int"},"create_custom_script_execution": {"type": "string"},"democustomescript_sh": {"type": "string"}, "play_VM_count": {"type": "int"}, "myshellscript_sh": {"type": "string"}, "startup_sh": {"type": "string"}, "conn_vm_count": {"type": "int"}, "playy_vm_count": {"type": "int"}, "conn_vm_name": {"type": "string"}, "play_vm_name": {"type": "string"}, "con_VM_count": {"type": "int"}
+            },
+            "variables": {
+              "script_vmDetails": "[parameters('script_vmDetails')]", "prefix": "[parameters('prefix')]", "create_custom_script_execution": "[parameters('create_custom_script_execution')]", "democustomescript_sh": "[parameters('democustomescript_sh')]",
+              "ipsuffix": "-pip", "nicsuffix": "-nic", "vmsuffix": "-vm-", "myshellscript_sh": "[parameters('myshellscript_sh')]", "startup_sh": "[parameters('startup_sh')]", "conn_vm_name": "con-vm", "play_vm_name": "play-vm"
+            },
+            "resources": [
+              {
+                "type": "Microsoft.Network/publicIPAddresses",
+                "apiVersion": "2023-11-01",
+                "name": "[concat(variables('script_vmDetails')[parameters('scriptvmCount')].namePrefix,copyIndex('scriptipsLoop'),variables('ipsuffix'))]",
+                "location": "[parameters('location')]",
+                "condition": "[and(equals(toLower(variables('script_vmDetails')[parameters('scriptvmCount')].createPublipIP), 'yes'), greater(variables('script_vmDetails')[parameters('scriptvmCount')].vm_count, 0))]",
+                "sku": {
+                  "name": "Standard",
+                  "tier": "Regional"
+                },
+                "copy": {
+                  "name": "scriptipsLoop",
+                  "count": "[variables('script_vmDetails')[parameters('scriptvmCount')].vm_count]"
+                },
+                "properties": {
+                    "publicIPAllocationMethod": "Static"
+                }
+              },
+              {
+                "type": "Microsoft.Network/networkInterfaces",
+                "apiVersion": "2023-11-01",
+                "name": "[concat(variables('script_vmDetails')[parameters('scriptvmCount')].namePrefix,copyIndex('scriptnicsLoop'),variables('nicsuffix'))]",
+                "location": "[parameters('location')]",
+                "dependsOn": ["scriptipsLoop"],
+                "id": "[resourceId('Microsoft.Network/networkInterfaces',concat(variables('script_vmDetails')[parameters('scriptvmCount')].namePrefix,copyIndex(),variables('nicsuffix')))]",
+                "copy": {
+                  "name": "scriptnicsLoop",
+                  "count": "[variables('script_vmDetails')[parameters('scriptvmCount')].vm_count]"
+                },
+                "properties": {
+                  "ipConfigurations": [
+                    {
+                      "name": "scriptipconfig1",
+                      "properties": {
+                        "privateIPAllocationMethod": "Dynamic",
+                        "publicIPAddress": {
+                          "id": "[resourceId('Microsoft.Network/publicIPAddresses',concat(variables('script_vmDetails')[parameters('scriptvmCount')].namePrefix,copyIndex(),variables('ipsuffix')))]"
+                        },
+                        "subnet": {
+                          "id": "[concat('/subscriptions/', subscription().subscriptionId, '/resourceGroups/', resourceGroup().name, '/providers/Microsoft.Network/virtualNetworks/arm-demo-vnet/subnets/default')]"
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "type": "Microsoft.Compute/virtualMachines",
+                "apiVersion": "2023-03-01",
+                "name": "[concat(variables('script_vmDetails')[parameters('scriptvmCount')].namePrefix,variables('vmsuffix'),copyIndex('scriptvmsLoop',0))]",
+                "location": "[parameters('location')]",
+                "dependsOn": ["scriptnicsLoop"],
+                "copy": {
+                  "name": "scriptvmsLoop",
+                  "count": "[variables('script_vmDetails')[parameters('scriptvmCount')].vm_count]"
+                },
+                "properties": {
+                  "hardwareProfile": {
+                    "vmSize": "[variables('script_vmDetails')[parameters('scriptvmCount')].size]"
+                  },
+                  "storageProfile": {
+                    "imageReference": {
+                      "publisher": "[variables('script_vmDetails')[parameters('scriptvmCount')].source_image.publisher]",
+                      "offer": "[variables('script_vmDetails')[parameters('scriptvmCount')].source_image.offer]",
+                      "sku": "[variables('script_vmDetails')[parameters('scriptvmCount')].source_image.sku]",
+                      "version": "[variables('script_vmDetails')[parameters('scriptvmCount')].source_image.version]"
+                    },
+                    "osDisk": {
+                      "osType": "Linux",
+                      "name": "[concat(variables('script_vmDetails')[parameters('scriptvmCount')].namePrefix, copyIndex('scriptvmsLoop',0), '-OsDisk')]",
+                      "createOption": "FromImage",
+                      "caching": "Readwrite",
+                      "writeAcceleratorEnabled": false,
+                      "deleteOption": "Detach",
+                      "diskSizeGB": "[variables('script_vmDetails')[parameters('scriptvmCount')].managed_data_disk.datadisk_size_gb]",
+                      "managedDisk": {
+                        "storageAccountType": "[variables('script_vmDetails')[parameters('scriptvmCount')].os_disk_type]"
+                      }
+                    },
+                    "dataDisks": "[if(and(equals(toLower(variables('script_vmDetails')[parameters('scriptvmCount')].managed_data_disk.create_data_disk), 'yes'), greater(variables('script_vmDetails')[parameters('scriptvmCount')].vm_count,0)), json(concat('[{\"lun\":5,\"name\":\"', variables('script_vmDetails')[parameters('scriptvmCount')].namePrefix, copyIndex('scriptvmsLoop', 0), '-Datadisk', '\",\"createOption\":\"Empty\",\"caching\":\"ReadWrite\",\"writeacceleratorEnabled\":false,\"managedDisk\":{\"storageAccountType\":\"', variables('script_vmDetails')[parameters('scriptvmCount')].managed_data_disk.datadisk_type, '\"},\"deleteOption\":\"Detach\",\"diskSizeGB\":', variables('script_vmDetails')[parameters('scriptvmCount')].managed_data_disk.datadisk_size_gb, ',\"toBeDetached\":false}]')), null())]"
+                  },
+                  "osProfile": {
+                    "computerName": "[concat(variables('script_vmDetails')[parameters('scriptvmCount')].namePrefix,copyIndex('scriptvmsLoop'), '-Server')]",
+                    "adminUsername": "[concat(variables('script_vmDetails')[parameters('scriptvmCount')].username)]",
+                    "adminPassword": "[concat(variables('script_vmDetails')[parameters('scriptvmCount')].password)]",
+                    "linuxConfiguration": {
+                      "disablePasswordAuthentication": false
+                    }
+                  },
+                  "networkProfile": {
+                    "networkInterfaces": [
+                      {
+                        "id": "[resourceId('Microsoft.Network/networkInterfaces',concat(variables('script_vmDetails')[parameters('scriptvmCount')].namePrefix,copyIndex(),variables('nicsuffix')))]"
+                      }
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "Microsoft.Compute/virtualMachines/extensions",
+                "apiVersion": "2023-03-01",
+                "condition": "[and(equals(toLower(variables('create_custom_script_execution')), 'yes'),greater(variables('script_vmDetails')[parameters('scriptvmCount')].vm_count,0))]",
+                "dependsOn": ["scriptvmsLoop"],
+                "copy": {
+                  "name": "All_script_loop",
+                  "count": "[variables('script_vmDetails')[parameters('scriptvmCount')].vm_count]"
+                },
+                "location": "[parameters('location')]",
+                "name": "[concat(variables('script_vmDetails')[parameters('scriptvmCount')].namePrefix,variables('vmsuffix'),copyIndex('All_script_loop',0), '/customScript-Execution')]",
+                "properties": {
+                  "publisher": "Microsoft.Azure.Extensions",
+                  "type": "CustomScript",
+                  "typeHandlerVersion": "2.1",
+                  "autoUpgradeMinorVersion": false,
+                  "settings": {
+                    "fileUris": [],
+                    "commandToExecute": "[concat('sudo su - ubuntu -c \"cd /home/ubuntu && echo ', variables('startup_sh'), ' | base64 -d > startup_sh.sh && chmod +x startup_sh.sh && ./startup_sh.sh\"')]"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      {
+        "type": "Microsoft.Resources/deployments",
+        "apiVersion": "2023-07-01",
+        "name": "customScriptdeploymentforvm",
+        "dependsOn": ["scriptvmsloop"],
+        "properties": {
+          "expressionEvaluationOptions": {
+            "scope": "Inner"
+          },
+          "mode": "Incremental",
+          "parameters": {
+            "prefix": {"value": "[variables('prefix')]"},
+            "location": {"value": "[parameters('location')]"},
+            "script_vmDetails": {"value": "[variables('script_vmDetails')]"},
+            //"scriptvmCount": {"value": "[copyIndex('customscriptcount')]"},
+            "create_custom_script_execution": {"value": "[parameters('create_custom_script_execution')]"},
+            "democustomescript_sh": {"value": "[variables('democustomescript_sh')]"},
+            "play_VM_count": {"value": "[parameters('play_VM_count')]"},
+            "startup_sh": {"value": "[variables('startup_sh')]"},
+            "myshellscript_sh": {"value": "[variables('myshellscript_sh')]"},
+            "conn_vm_count": {"value": "[variables('conn_vm_count')]"},
+            "playy_vm_count": {"value": "[variables('playy_vm_count')]"},
+            "conn_vm_name": {"value": "[variables('conn_vm_name')]"},
+            "play_vm_name": {"value": "[variables('play_vm_name')]"},
+            "con_VM_count": {"value": "[parameters('con_VM_count')]"}
+          },
+          "template": {
+            "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+            "contentVersion": "1.0.0.0",
+            "parameters": {
+              "script_vmDetails": {"type": "array"},"location": {"type": "string"},"prefix": {"type": "string"},"create_custom_script_execution": {"type": "string"},"democustomescript_sh": {"type": "string"}, "play_VM_count": {"type": "int"}, "myshellscript_sh": {"type": "string"}, "startup_sh": {"type": "string"}, "conn_vm_count": {"type": "int"}, "playy_vm_count": {"type": "int"}, "conn_vm_name": {"type": "string"}, "play_vm_name": {"type": "string"}, "con_VM_count": {"type": "int"}
+            },
+            "variables": {
+              "script_vmDetails": "[parameters('script_vmDetails')]", "prefix": "[parameters('prefix')]", "create_custom_script_execution": "[parameters('create_custom_script_execution')]", "democustomescript_sh": "[parameters('democustomescript_sh')]", "ipsuffix": "-pip", "nicsuffix": "-nic", "vmsuffix": "-vm-", "myshellscript_sh": "[parameters('myshellscript_sh')]", "startup_sh": "[parameters('startup_sh')]", "conn_vm_name": "[parameters('conn_vm_name')]", "play_vm_name": "[parameters('play_vm_name')]"
+            },
+            "resources": [
+              {
+                "type": "Microsoft.Compute/virtualMachines/extensions",
+                "apiVersion": "2023-03-01",
+                "copy": {
+                  "name": "conn_script_loop",
+                  "count": "[if(equals(toLower(variables('create_custom_script_execution')), 'yes'),parameters('con_VM_count'),0)]"
+                },
+                "location": "[parameters('location')]",
+                "name": "[concat(variables('conn_vm_name'),variables('vmsuffix'),copyIndex(), '/customScript-Execution')]",
+                "properties": {
+                  "publisher": "Microsoft.Azure.Extensions",
+                  "type": "CustomScript",
+                  "typeHandlerVersion": "2.1",
+                  "autoUpgradeMinorVersion": false,
+                  "settings": {
+                    "fileUris": [],
+                    "commandToExecute": "[concat('sudo su - ubuntu -c \"cd /home/ubuntu && echo ', variables('democustomescript_sh'), ' | base64 -d > democustomescript_sh.sh && chmod +x democustomescript_sh.sh && ./democustomescript_sh.sh\"')]"
+                  }
+                }
+              },
+              {
+                "type": "Microsoft.Compute/virtualMachines/extensions",
+                "apiVersion": "2023-03-01",
+                "copy": {
+                  "name": "playy_script_loop",
+                  "count": "[if(equals(toLower(variables('create_custom_script_execution')), 'yes'),parameters('play_VM_count'),0)]"
+                },
+                "location": "[parameters('location')]",
+                "name": "[concat(variables('play_vm_name'),variables('vmsuffix'),copyIndex(), '/customScript-Execution')]",
+                "properties": {
+                  "publisher": "Microsoft.Azure.Extensions",
+                  "type": "CustomScript",
+                  "typeHandlerVersion": "2.1",
+                  "autoUpgradeMinorVersion": false,
+                  "settings": {
+                    "fileUris": [],
+                    "commandToExecute": "[concat('sudo su - ubuntu -c \"cd /home/ubuntu && ', if(and(equals(variables('script_vmDetails')[parameters('play_VM_count')].namePrefix, 'play'), equals(copyIndex(), 0)), concat('echo ', variables('myshellscript_sh'), ' | base64 -d > myshellscript_sh.sh && chmod +x myshellscript_sh.sh && ./myshellscript_sh.sh'), 'echo \"No additional script to run for this VM\"'), '\"')]"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    ]
+  }
